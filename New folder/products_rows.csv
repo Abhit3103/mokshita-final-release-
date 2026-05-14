@@ -1,0 +1,21 @@
+id,name,slug,sku,category,subcategory,description,price,compare_price,stock,material,region,dimensions,tags,image_url,featured,status,created_at
+0b34c80c-4739-41af-8810-011e4d240939,Zardozi Coin Purse,zardozi-coin-purse,ME019,Zardozi,,,660.00,,10,Thread Work,India,,,,false,active,2026-04-25 19:56:11.353007+00
+0f7b95be-f117-4599-b33e-ea558549b5b0,Wooden Dice,wooden-dice,ME006,Wooden Items,,,370.00,,10,Wood,Jaipur,,,,false,active,2026-04-25 19:56:11.353007+00
+151a358a-5f01-4c3d-9f67-3d0b1fcf843e,Taj Mahal Watercolour,taj-mahal-watercolour,ME001,Paintings,,,600.00,,10,Paper,Agra,,,,false,active,2026-04-25 19:56:11.353007+00
+1e5127a5-6010-4be0-b688-c5e76fd7a301,Crochet Turtle,crochet-turtle,ME009,Crochet,,,350.00,,10,Cotton Yarn,India,,,,false,active,2026-04-25 19:56:11.353007+00
+294e1f36-42cc-4782-8c7a-42aacb043424,Zardozi Tiger,zardozi-tiger,ME017,Zardozi,,,430.00,,10,Thread Work,India,,,,false,active,2026-04-25 19:56:11.353007+00
+4a7cd51a-7f25-4bc7-8a3e-c69fb0094985,Zardozi Halloween,zardozi-halloween,ME020,Zardozi,,,360.00,,10,Thread Work,India,,,,false,active,2026-04-25 19:56:11.353007+00
+4a8c42f3-788c-4292-a7c8-48d93f67e794,Zardozi Tuk Tuk,zardozi-tuk-tuk,ME018,Zardozi,,,380.00,,10,Thread Work,India,,,,false,active,2026-04-25 19:56:11.353007+00
+505651ee-a5aa-4766-b214-e05c8cc6f975,Zardozi Double Elephant,zardozi-double-elephant,ME012,Zardozi,,,480.00,,10,Thread Work,India,,,,false,active,2026-04-25 19:56:11.353007+00
+593fd837-80a0-4aa5-b27b-7e88e1428f5c,Zardozi Carrot,zardozi-carrot,ME015,Zardozi,,,360.00,,10,Thread Work,India,,,,false,active,2026-04-25 19:56:11.353007+00
+90f26220-e780-4415-b8f3-58a83be1883a,Elephant Pouch,elephant-pouch,ME011,Textile,,,550.00,,10,Fabric,India,,,,false,active,2026-04-25 19:56:11.353007+00
+b0db9d89-b0bd-434e-85e2-0f58e5390d6e,Coaster Plates,coaster-plates,ME005,Marble Decor,,,750.00,,10,Makrana Marble,Agra,,,,false,active,2026-04-25 19:56:11.353007+00
+b10a4a2f-4344-42a2-a4dd-fc6dcd9c54e7,Pichwai Art,pichwai-art,ME002,Paintings,,,650.00,,10,Paper,Nathdwara,,,,false,active,2026-04-25 19:56:11.353007+00
+b7480288-4f33-4ef2-8ece-9ac9257da592,Crochet Doll,crochet-doll,ME008,Crochet,,,750.00,,10,Cotton Yarn,India,,,,false,active,2026-04-25 19:56:11.353007+00
+b7b35b93-70eb-4e7c-84bb-b44a78ce0767,Sunflower Keyring,sunflower-keyring,ME010,Crochet,,,250.00,,10,Cotton Yarn,India,,,,false,active,2026-04-25 19:56:11.353007+00
+c913436c-5c8f-4499-b446-ce58c928117b,Zardozi Elephant Trunk,zardozi-elephant-trunk,ME016,Zardozi,,,360.00,,10,Thread Work,India,,,,false,active,2026-04-25 19:56:11.353007+00
+d19caa61-d8b7-45d7-b35c-380102307092,Wooden Ganesha,wooden-ganesha,ME007,Wooden Items,,,310.00,,10,Wood,Jaipur,,,,false,active,2026-04-25 19:56:11.353007+00
+d4ffd5ae-caec-475a-9183-8d3cdd17a86c,Zardozi Elephant,zardozi-elephant,ME013,Zardozi,,,380.00,,10,Thread Work,India,,,,false,active,2026-04-25 19:56:11.353007+00
+debe674c-10da-4ff7-9242-7c29056ef230,Zardozi Camel,zardozi-camel,ME014,Zardozi,,,360.00,,10,Thread Work,India,,,,false,active,2026-04-25 19:56:11.353007+00
+eefd54e1-09c7-4117-b464-3b196f51e5a2,Watercolour Mini,watercolour-mini,ME003,Paintings,,,300.00,,10,Paper,Jaipur,,,,false,active,2026-04-25 19:56:11.353007+00
+f2d83731-cb8d-43aa-b711-95b2a0dc60f4,Marble Tortoise,marble-tortoise,ME004,Marble Decor,,,430.00,,10,Makrana Marble,Agra,,,,false,active,2026-04-25 19:56:11.353007+00
