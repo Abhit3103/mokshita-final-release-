@@ -6,15 +6,22 @@ const { authenticateToken } = require('../middlewares/auth.middleware');
 const { isAdmin } = require('../middlewares/admin.middleware');
 const { uploadMiddleware } = require('../middlewares/upload.middleware');
 
-// POST /api/upload
-// Requires JWT auth and Admin role
+/**
+ * POST /api/upload
+ * Requires: JWT auth + Admin role
+ *
+ * Accepts: multipart/form-data with field name "image"
+ * Returns: { success: true, imageUrl: "<supabase-cdn-url>" }
+ *
+ * The uploadMiddleware handles:
+ *  1. Validating file type + size
+ *  2. Uploading buffer to Supabase Storage
+ *  3. Setting req.uploadedImageUrl to the permanent CDN URL
+ */
 router.post('/', authenticateToken, isAdmin, uploadMiddleware, (req, res) => {
-  // If middleware passes, file is successfully uploaded and accessible at req.file
-  const imageUrl = `/uploads/products/${req.file.filename}`;
-  
-  res.status(200).json({
+  return res.status(200).json({
     success: true,
-    imageUrl: imageUrl
+    imageUrl: req.uploadedImageUrl,
   });
 });
 

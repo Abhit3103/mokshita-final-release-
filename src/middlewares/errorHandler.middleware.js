@@ -13,7 +13,12 @@ const errorHandler = (err, req, res, next) => {
   const method = req.method;
   const url    = req.originalUrl;
 
-  console.error(`[ERROR] ${method} ${url} →`, err.message || err);
+  // Log full error for unexpected internal errors, otherwise just the message
+  if (!err.statusCode && !err.code && !err.type) {
+    console.error(`[CRITICAL ERROR] ${method} ${url} →`, err);
+  } else {
+    console.error(`[ERROR] ${method} ${url} →`, err.message || err);
+  }
 
   // ── Postgres: Unique constraint violation (23505) ───────────────────────────
   if (err.code === '23505') {

@@ -2,8 +2,8 @@
 
 const express = require('express');
 const path = require('path');
-const cors = require('cors');
 const helmet = require('helmet');
+const { createCorsMiddleware } = require('./config/cors.config');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 
@@ -18,24 +18,26 @@ const subcategoryRoutes = require('./routes/subcategory.routes');
 const travelRoutes      = require('./routes/travel.routes');
 const contentRoutes     = require('./routes/content.routes');
 const leadsRoutes       = require('./routes/leads.routes');
+const navigationRoutes  = require('./routes/navigation.routes');
+const paymentRoutes     = require('./routes/payment.routes');
 
 const errorHandler      = require('./middlewares/errorHandler.middleware');
 
 const app = express();
 
-// ─── Security Headers ─────────────────────────────────────────────────────────
-app.use(helmet());
+// ─── Trust Proxy ─────────────────────────────────────────────────────────────
+// REQUIRED when hosted behind a reverse proxy (Render, Railway, Nginx, etc.)
+// Without this, express-rate-limit sees the proxy IP, not the real visitor IP,
+// which would cause all users to share one rate-limit bucket.
+app.set('trust proxy', 1);
 
-// ─── CORS ─────────────────────────────────────────────────────────────────────
-app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://localhost:5500',
-    'http://127.0.0.1:5500',
-  ],
-  credentials: true
+
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
+
+// ─── CORS (environment-aware — see src/config/cors.config.js) ─────────────────
+app.use(createCorsMiddleware());
 
 // ─── Body Parsing ─────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10kb' }));
@@ -77,8 +79,10 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/categories',    categoryRoutes);
 app.use('/api/subcategories', subcategoryRoutes);
 app.use('/api/travel-packages', travelRoutes);
-app.use('/api/content',       contentRoutes);
-app.use('/api/leads',         leadsRoutes);
+app.use('/api/content',         contentRoutes);
+app.use('/api/leads',           leadsRoutes);
+app.use('/api/navigation',      navigationRoutes);
+app.use('/api/payments',        paymentRoutes);      // Razorpay payment gateway
 
 
 // ─── Health Check ─────────────────────────────────────────────────────────────

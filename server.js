@@ -16,6 +16,12 @@ pool.query('SELECT NOW()', (err) => {
 
   console.log('✅ PostgreSQL connected successfully');
 
+  const { ensureOthersCategory, migrateUncategorizedProducts } = require('./src/utils/category.util');
+  ensureOthersCategory()
+    .then(() => migrateUncategorizedProducts())
+    .then(() => console.log('✅ Category layer verified (Others + sync)'))
+    .catch((catErr) => console.warn('⚠️  Category bootstrap skipped:', catErr.message));
+
   app.listen(PORT, () => {
     console.log(`🚀 Mokshita API running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`);
   });

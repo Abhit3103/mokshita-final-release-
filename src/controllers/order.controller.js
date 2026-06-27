@@ -15,6 +15,13 @@ const FLAT_SHIPPING_COST = 80;
  * 3. Calculates subtotal + shipping server-side.
  * 4. Deducts stock atomically inside a transaction.
  * 5. Clears user's DB cart on success.
+ *
+ * Payment flow:
+ *   COD       → status = 'received' immediately.
+ *   RAZORPAY  → status = 'pending_payment'. Frontend then calls:
+ *               POST /api/payments/create-order (to get razorpay_order_id)
+ *               Opens Razorpay checkout modal
+ *               POST /api/payments/verify (to confirm + set status = 'received')
  */
 const checkout = asyncHandler(async (req, res) => {
   const {
@@ -26,6 +33,16 @@ const checkout = asyncHandler(async (req, res) => {
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ success: false, message: 'Order must contain at least one item.' });
+  }
+
+  // Validate payment_method
+  const VALID_PAYMENT_METHODS = ['COD', 'RAZORPAY'];
+  const normalizedPayment = (payment_method || 'COD').toUpperCase();
+  if (!VALID_PAYMENT_METHODS.includes(normalizedPayment)) {
+    return res.status(400).json({
+      success: false,
+      message: `payment_method must be one of: ${VALID_PAYMENT_METHODS.join(', ')}.`,
+    });
   }
 
   const client = await pool.connect();
@@ -65,7 +82,12 @@ const checkout = asyncHandler(async (req, res) => {
 
       const price = parseFloat(product.price);
       subtotal += price * parseInt(quantity);
-      validatedItems.push({ product_id: product.id, quantity: parseInt(quantity), price_at_time: price, name: product.name });
+      validatedItems.push({
+        product_id: product.id,
+        quantity: parseInt(quantity),
+        price_at_time: price,
+        name: product.name,
+      });
     }
 
     // ── Calculate shipping ───────────────────────────────────────────────────
@@ -73,17 +95,21 @@ const checkout = asyncHandler(async (req, res) => {
     const total = subtotal + shipping_cost;
     const order_number = generateOrderNumber();
 
+    // ── Order status: COD confirmed immediately; Razorpay waits for payment ─
+    const initialStatus = normalizedPayment === 'RAZORPAY' ? 'pending_payment' : 'received';
+
     // ── Create order record ──────────────────────────────────────────────────
     const orderResult = await client.query(
       `INSERT INTO orders
          (user_id, order_number, customer_name, email, phone, address_line, city, state, pincode,
           payment_method, subtotal, shipping_cost, total, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'received')
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING *`,
       [
         req.user?.id || null, order_number, customer_name, email, phone,
         address_line, city, state, pincode,
-        payment_method, subtotal.toFixed(2), shipping_cost.toFixed(2), total.toFixed(2),
+        normalizedPayment, subtotal.toFixed(2), shipping_cost.toFixed(2), total.toFixed(2),
+        initialStatus,
       ]
     );
 
@@ -115,12 +141,16 @@ const checkout = asyncHandler(async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: 'Order placed successfully.',
+      message: normalizedPayment === 'RAZORPAY'
+        ? 'Order created. Complete payment to confirm your order.'
+        : 'Order placed successfully.',
       order: {
         ...order,
         items: validatedItems.map(({ product_id, quantity, price_at_time, name }) => ({
           product_id, quantity, price_at_time, name,
         })),
+        // For Razorpay: frontend needs amount_paise to pass to the Razorpay checkout SDK
+        amount_paise: normalizedPayment === 'RAZORPAY' ? Math.round(total * 100) : undefined,
       },
     });
   } catch (err) {

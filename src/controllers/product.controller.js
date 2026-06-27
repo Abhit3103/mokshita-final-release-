@@ -2,6 +2,7 @@
 
 const pool = require('../config/db');
 const { asyncHandler, slugify } = require('../utils/helpers.util');
+const { resolveCategoryFromBody, ensureOthersCategory } = require('../utils/category.util');
 
 // ─── GET /api/products ────────────────────────────────────────────────────────
 const getAllProducts = asyncHandler(async (req, res) => {
@@ -11,9 +12,13 @@ const getAllProducts = asyncHandler(async (req, res) => {
   const params = [];
   let idx = 1;
 
-  if (category) {
-    conditions.push(`category = $${idx++}`);
+  if (req.query.category_id) {
+    conditions.push(`category_id = $${idx++}`);
+    params.push(req.query.category_id);
+  } else if (category) {
+    conditions.push(`(category = $${idx} OR category_id IN (SELECT id FROM categories WHERE slug = $${idx}))`);
     params.push(category);
+    idx++;
   }
   if (min_price) {
     conditions.push(`price >= $${idx++}`);
@@ -40,7 +45,7 @@ const getAllProducts = asyncHandler(async (req, res) => {
 
   const [productsResult, countResult] = await Promise.all([
     pool.query(
-      `SELECT id, slug, name, price, category, stock, description, image_url, created_at
+      `SELECT id, slug, name, price, category, category_id, subcategory_id, stock, description, image_url, created_at
        FROM products ${whereClause}
        ORDER BY ${safeSort} ${safeOrder}
        LIMIT $${idx++} OFFSET $${idx}`,
@@ -175,15 +180,35 @@ const getRichProductBySlug = asyncHandler(async (req, res) => {
 
 // ─── POST /api/products (Admin) ───────────────────────────────────────────────
 const createProduct = asyncHandler(async (req, res) => {
-  const { name, price, category, stock, description, image_url, slug: customSlug } = req.body;
+  const { name, price, stock, description, image_url, slug: customSlug } = req.body;
 
   const slug = customSlug ? slugify(customSlug) : slugify(name);
+  let catFields;
+  try {
+    catFields = await resolveCategoryFromBody(req.body);
+  } catch (err) {
+    return res.status(err.statusCode || 400).json({ success: false, message: err.message });
+  }
 
   const result = await pool.query(
-    `INSERT INTO products (slug, name, price, category, stock, description, image_url)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO products (
+       slug, name, price, category, category_id, subcategory, subcategory_id,
+       stock, description, image_url
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING *`,
-    [slug, name, parseFloat(price), category || null, parseInt(stock) || 0, description || null, image_url || null]
+    [
+      slug,
+      name,
+      parseFloat(price),
+      catFields.category,
+      catFields.category_id,
+      catFields.subcategory,
+      catFields.subcategory_id,
+      parseInt(stock) || 0,
+      description || null,
+      image_url || null,
+    ]
   );
 
   return res.status(201).json({ success: true, message: 'Product created.', product: result.rows[0] });
@@ -191,24 +216,57 @@ const createProduct = asyncHandler(async (req, res) => {
 
 // ─── PUT /api/products/:id (Admin) ────────────────────────────────────────────
 const updateProduct = asyncHandler(async (req, res) => {
-  const { name, price, category, stock, description, image_url, slug } = req.body;
+  const { name, price, stock, description, image_url, slug } = req.body;
   const { id } = req.params;
+
+  const hasCategoryPayload =
+    req.body.category_id !== undefined ||
+    req.body.category !== undefined ||
+    req.body.subcategory_id !== undefined ||
+    req.body.subcategory !== undefined;
+
+  let catFields = null;
+  if (hasCategoryPayload) {
+    const existing = await pool.query('SELECT category_id, category, subcategory_id, subcategory FROM products WHERE id = $1', [id]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Product not found.' });
+    }
+    const current = existing.rows[0];
+    try {
+      catFields = await resolveCategoryFromBody({
+        category_id: req.body.category_id !== undefined ? req.body.category_id : current.category_id,
+        category: req.body.category !== undefined ? req.body.category : current.category,
+        subcategory_id: req.body.subcategory_id !== undefined ? req.body.subcategory_id : current.subcategory_id,
+        subcategory: req.body.subcategory !== undefined ? req.body.subcategory : current.subcategory,
+      });
+    } catch (err) {
+      return res.status(err.statusCode || 400).json({ success: false, message: err.message });
+    }
+  } else {
+    await ensureOthersCategory();
+  }
 
   const result = await pool.query(
     `UPDATE products
-     SET name        = COALESCE($1, name),
-         price       = COALESCE($2, price),
-         category    = COALESCE($3, category),
-         stock       = COALESCE($4, stock),
-         description = COALESCE($5, description),
-         image_url   = COALESCE($6, image_url),
-         slug        = COALESCE($7, slug)
-     WHERE id = $8
+     SET name            = COALESCE($1, name),
+         price           = COALESCE($2, price),
+         category        = COALESCE($3, category),
+         category_id     = COALESCE($4, category_id),
+         subcategory     = COALESCE($5, subcategory),
+         subcategory_id  = COALESCE($6, subcategory_id),
+         stock           = COALESCE($7, stock),
+         description     = COALESCE($8, description),
+         image_url       = COALESCE($9, image_url),
+         slug            = COALESCE($10, slug)
+     WHERE id = $11
      RETURNING *`,
     [
       name || null,
       price != null ? parseFloat(price) : null,
-      category || null,
+      catFields ? catFields.category : null,
+      catFields ? catFields.category_id : null,
+      catFields ? catFields.subcategory : null,
+      catFields ? catFields.subcategory_id : null,
       stock != null ? parseInt(stock) : null,
       description || null,
       image_url || null,
@@ -219,6 +277,15 @@ const updateProduct = asyncHandler(async (req, res) => {
 
   if (result.rows.length === 0) {
     return res.status(404).json({ success: false, message: 'Product not found.' });
+  }
+
+  if (!result.rows[0].category_id) {
+    const others = await ensureOthersCategory();
+    const fixed = await pool.query(
+      `UPDATE products SET category_id = $1, category = $2 WHERE id = $3 RETURNING *`,
+      [others.id, others.name, id]
+    );
+    return res.json({ success: true, message: 'Product updated.', product: fixed.rows[0] });
   }
 
   return res.json({ success: true, message: 'Product updated.', product: result.rows[0] });
