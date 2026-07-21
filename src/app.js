@@ -104,6 +104,15 @@ app.get('/health', async (_req, res) => {
     });
   }
 });
+// ─── Root Route ───────────────────────────────────────────────────────────────
+app.get('/', (_req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Mokshita Enterprises Backend is running',
+    status: 'OK',
+    health: '/health'
+  });
+});
 
 // ─── 404 Handler ─────────────────────────────────────────────────────────────
 app.use((_req, res) => {
