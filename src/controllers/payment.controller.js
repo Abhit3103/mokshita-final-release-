@@ -56,16 +56,17 @@ function getRazorpay() {
  * receipt      = a short reference string (e.g., the DB order_number).
  */
 const createRazorpayOrder = asyncHandler(async (req, res) => {
-  const { amount_paise, receipt, notes = {} } = req.body;
+  const { amount_paise, amountPaise, receipt, notes = {} } = req.body;
+  const resolvedAmountPaise = amount_paise ?? amountPaise;
 
-  if (!amount_paise || isNaN(parseInt(amount_paise)) || parseInt(amount_paise) < 100) {
+  if (!resolvedAmountPaise || isNaN(parseInt(resolvedAmountPaise)) || parseInt(resolvedAmountPaise) < 100) {
     return res.status(400).json({ success: false, message: 'amount_paise must be an integer ≥ 100 (₹1).' });
   }
 
   const rzp = getRazorpay();
 
   const razorpayOrder = await rzp.orders.create({
-    amount:   parseInt(amount_paise),
+    amount:   parseInt(resolvedAmountPaise),
     currency: 'INR',
     receipt:  receipt || `mks-${Date.now()}`,
     notes,
@@ -95,12 +96,20 @@ const createRazorpayOrder = asyncHandler(async (req, res) => {
 const verifyPayment = asyncHandler(async (req, res) => {
   const {
     razorpay_payment_id,
+    razorpayPaymentId,
     razorpay_order_id,
+    razorpayOrderId,
     razorpay_signature,
+    razorpaySignature,
     order_db_id,
+    orderDbId,
   } = req.body;
+  const resolvedPaymentId = razorpay_payment_id || razorpayPaymentId;
+  const resolvedOrderId = razorpay_order_id || razorpayOrderId;
+  const resolvedSignature = razorpay_signature || razorpaySignature;
+  const resolvedOrderDbId = order_db_id || orderDbId;
 
-  if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature || !order_db_id) {
+  if (!resolvedPaymentId || !resolvedOrderId || !resolvedSignature || !resolvedOrderDbId) {
     return res.status(400).json({ success: false, message: 'Missing required payment verification fields.' });
   }
 
@@ -109,19 +118,19 @@ const verifyPayment = asyncHandler(async (req, res) => {
     return res.status(500).json({ success: false, message: 'Payment gateway not configured on server.' });
   }
 
-  const body = `${razorpay_order_id}|${razorpay_payment_id}`;
+  const body = `${resolvedOrderId}|${resolvedPaymentId}`;
   const expectedSig = crypto
     .createHmac('sha256', keySecret)
     .update(body)
     .digest('hex');
 
-  const receivedBuffer = Buffer.from(razorpay_signature, 'utf8');
+  const receivedBuffer = Buffer.from(resolvedSignature, 'utf8');
   const expectedBuffer = Buffer.from(expectedSig, 'utf8');
 
   if (receivedBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(receivedBuffer, expectedBuffer)) {
     await pool.query(
       `UPDATE orders SET status = 'payment_failed', razorpay_order_id = $1 WHERE id = $2`,
-      [razorpay_order_id, order_db_id]
+      [resolvedOrderId, resolvedOrderDbId]
     );
     return res.status(400).json({ success: false, message: 'Payment verification failed. Signature mismatch.' });
   }
@@ -134,7 +143,7 @@ const verifyPayment = asyncHandler(async (req, res) => {
          razorpay_signature  = $3
      WHERE id = $4
      RETURNING id, order_number, status, total`,
-    [razorpay_order_id, razorpay_payment_id, razorpay_signature, order_db_id]
+    [resolvedOrderId, resolvedPaymentId, resolvedSignature, resolvedOrderDbId]
   );
 
   if (result.rows.length === 0) {

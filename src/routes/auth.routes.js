@@ -31,6 +31,16 @@ router.post(
   login
 );
 
+// ─── Compatibility aliases for common frontend clients ──────────────────────
+router.post('/signup', (req, res, next) => {
+  req.body = { ...req.body, full_name: req.body.full_name || req.body.name || null };
+  next();
+}, register);
+
+router.post('/logout', (_req, res) => {
+  return res.json({ success: true, message: 'Logged out successfully.' });
+});
+
 // ─── GET /api/auth/me ─────────────────────────────────────────────────────────
 router.get('/me', authenticateToken, getMe);
 

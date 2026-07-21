@@ -25,11 +25,14 @@ const FLAT_SHIPPING_COST = 80;
  */
 const checkout = asyncHandler(async (req, res) => {
   const {
-    customer_name, email, phone,
-    address_line, city, state, pincode,
-    payment_method = 'COD',
+    customer_name, customerName, email, phone,
+    address_line, addressLine, city, state, pincode,
+    payment_method, paymentMethod = 'COD',
     items, // [{ product_id, quantity }]
   } = req.body;
+  const resolvedCustomerName = customer_name || customerName;
+  const resolvedAddressLine = address_line || addressLine;
+  const resolvedPaymentMethod = (payment_method || paymentMethod || 'COD').toUpperCase();
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ success: false, message: 'Order must contain at least one item.' });
@@ -37,7 +40,7 @@ const checkout = asyncHandler(async (req, res) => {
 
   // Validate payment_method
   const VALID_PAYMENT_METHODS = ['COD', 'RAZORPAY'];
-  const normalizedPayment = (payment_method || 'COD').toUpperCase();
+  const normalizedPayment = resolvedPaymentMethod;
   if (!VALID_PAYMENT_METHODS.includes(normalizedPayment)) {
     return res.status(400).json({
       success: false,
@@ -106,8 +109,8 @@ const checkout = asyncHandler(async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING *`,
       [
-        req.user?.id || null, order_number, customer_name, email, phone,
-        address_line, city, state, pincode,
+        req.user?.id || null, order_number, resolvedCustomerName, email, phone,
+        resolvedAddressLine, city, state, pincode,
         normalizedPayment, subtotal.toFixed(2), shipping_cost.toFixed(2), total.toFixed(2),
         initialStatus,
       ]

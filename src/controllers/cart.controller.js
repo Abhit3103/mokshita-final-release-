@@ -45,10 +45,11 @@ const getCart = asyncHandler(async (req, res) => {
 
 // ─── POST /api/cart ────────────────────────────────────────────────────────────
 const addToCart = asyncHandler(async (req, res) => {
-  const { product_id, quantity = 1 } = req.body;
+  const { product_id, productId, quantity = 1 } = req.body;
+  const resolvedProductId = product_id || productId;
 
   // Validate product exists and has sufficient stock
-  const product = await pool.query('SELECT id, stock FROM products WHERE id = $1', [product_id]);
+  const product = await pool.query('SELECT id, stock FROM products WHERE id = $1', [resolvedProductId]);
   if (product.rows.length === 0) {
     return res.status(404).json({ success: false, message: 'Product not found.' });
   }
@@ -120,9 +121,10 @@ const removeCartItem = asyncHandler(async (req, res) => {
  * Body: { items: [{ product_id, quantity }] }
  */
 const syncCart = asyncHandler(async (req, res) => {
-  const { items } = req.body;
+  const { items, cartItems } = req.body;
+  const syncItems = items || cartItems || [];
 
-  if (!Array.isArray(items) || items.length === 0) {
+  if (!Array.isArray(syncItems) || syncItems.length === 0) {
     return res.status(400).json({ success: false, message: 'No items to sync.' });
   }
 
@@ -132,7 +134,7 @@ const syncCart = asyncHandler(async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    for (const item of items) {
+    for (const item of syncItems) {
       const { product_id, quantity } = item;
       if (!product_id || !quantity || parseInt(quantity) < 1) continue;
 

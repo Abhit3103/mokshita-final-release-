@@ -7,7 +7,8 @@ const { asyncHandler } = require('../utils/helpers.util');
 
 // ─── POST /api/auth/register ──────────────────────────────────────────────────
 const register = asyncHandler(async (req, res) => {
-  const { email, password, full_name, phone } = req.body;
+  const { email, password, full_name, phone, name } = req.body;
+  const resolvedFullName = full_name || name || null;
 
   // Check if user already exists
   const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
@@ -22,7 +23,7 @@ const register = asyncHandler(async (req, res) => {
     `INSERT INTO users (email, password_hash, full_name, phone, role)
      VALUES ($1, $2, $3, $4, 'customer')
      RETURNING id, email, full_name, phone, role, created_at`,
-    [email.toLowerCase(), password_hash, full_name || null, phone || null]
+    [email.toLowerCase(), password_hash, resolvedFullName, phone || null]
   );
 
   const user = result.rows[0];
@@ -33,6 +34,7 @@ const register = asyncHandler(async (req, res) => {
     message: 'Account created successfully.',
     token,
     user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role },
+    data: { user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role }, token },
   });
 });
 
@@ -57,6 +59,7 @@ const login = asyncHandler(async (req, res) => {
     message: 'Logged in successfully.',
     token,
     user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role },
+    data: { user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role }, token },
   });
 });
 
