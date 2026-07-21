@@ -104,20 +104,21 @@ const verifyPayment = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Missing required payment verification fields.' });
   }
 
-  // ── HMAC-SHA256 verification ─────────────────────────────────────────────
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
   if (!keySecret) {
     return res.status(500).json({ success: false, message: 'Payment gateway not configured on server.' });
   }
 
-  const body    = `${razorpay_order_id}|${razorpay_payment_id}`;
+  const body = `${razorpay_order_id}|${razorpay_payment_id}`;
   const expectedSig = crypto
     .createHmac('sha256', keySecret)
     .update(body)
     .digest('hex');
 
-  if (expectedSig !== razorpay_signature) {
-    // Signature mismatch — mark order as payment_failed
+  const receivedBuffer = Buffer.from(razorpay_signature, 'utf8');
+  const expectedBuffer = Buffer.from(expectedSig, 'utf8');
+
+  if (receivedBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(receivedBuffer, expectedBuffer)) {
     await pool.query(
       `UPDATE orders SET status = 'payment_failed', razorpay_order_id = $1 WHERE id = $2`,
       [razorpay_order_id, order_db_id]
@@ -125,7 +126,6 @@ const verifyPayment = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Payment verification failed. Signature mismatch.' });
   }
 
-  // ── Signature valid — update order record ─────────────────────────────────
   const result = await pool.query(
     `UPDATE orders
      SET status              = 'received',
@@ -144,7 +144,7 @@ const verifyPayment = asyncHandler(async (req, res) => {
   return res.json({
     success: true,
     message: 'Payment verified successfully.',
-    order:   result.rows[0],
+    order: result.rows[0],
   });
 });
 
@@ -167,50 +167,95 @@ const handleWebhook = asyncHandler(async (req, res) => {
     return res.status(200).json({ received: true });
   }
 
-  // ── Verify Razorpay webhook signature ─────────────────────────────────────
-  const receivedSig  = req.headers['x-razorpay-signature'];
-  const expectedSig  = crypto
+  const receivedSig = Array.isArray(req.headers['x-razorpay-signature'])
+    ? req.headers['x-razorpay-signature'][0]
+    : req.headers['x-razorpay-signature'];
+  const expectedSig = crypto
     .createHmac('sha256', webhookSecret)
-    .update(req.body) // raw buffer
+    .update(req.body)
     .digest('hex');
 
-  if (receivedSig !== expectedSig) {
+  const receivedBuffer = Buffer.from(receivedSig || '', 'utf8');
+  const expectedBuffer = Buffer.from(expectedSig, 'utf8');
+
+  if (receivedBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(receivedBuffer, expectedBuffer)) {
     console.warn('⚠️  Invalid Razorpay webhook signature — ignoring event.');
     return res.status(400).json({ success: false, message: 'Invalid webhook signature.' });
   }
 
-  // ── Parse payload ─────────────────────────────────────────────────────────
   const event = JSON.parse(req.body.toString());
-  const eventType = event.event;
+  const eventType = event?.event;
 
   if (eventType === 'payment.captured') {
-    const payment = event.payload.payment.entity;
-    const rzpOrderId = payment.order_id;
+    const payment = event?.payload?.payment?.entity;
+    const rzpOrderId = payment?.order_id;
 
-    await pool.query(
-      `UPDATE orders
-       SET status              = 'received',
-           razorpay_payment_id = $1
-       WHERE razorpay_order_id = $2
-         AND status IN ('pending_payment', 'received')`,
-      [payment.id, rzpOrderId]
-    );
-
-    console.log(`✅ Webhook: payment.captured — razorpay_order_id=${rzpOrderId}`);
+    if (rzpOrderId) {
+      await pool.query(
+        `UPDATE orders
+         SET status = 'received',
+             razorpay_payment_id = COALESCE($1, razorpay_payment_id)
+         WHERE razorpay_order_id = $2
+           AND status IN ('pending_payment', 'payment_failed', 'received')`,
+        [payment.id, rzpOrderId]
+      );
+      console.log(`✅ Webhook: payment.captured — razorpay_order_id=${rzpOrderId}`);
+    }
   } else if (eventType === 'payment.failed') {
-    const payment = event.payload.payment.entity;
-    const rzpOrderId = payment.order_id;
+    const payment = event?.payload?.payment?.entity;
+    const rzpOrderId = payment?.order_id;
 
-    await pool.query(
-      `UPDATE orders SET status = 'payment_failed' WHERE razorpay_order_id = $1`,
-      [rzpOrderId]
-    );
+    if (rzpOrderId) {
+      await pool.query(
+        `UPDATE orders
+         SET status = 'payment_failed', razorpay_payment_id = COALESCE($1, razorpay_payment_id)
+         WHERE razorpay_order_id = $2
+           AND status IN ('pending_payment', 'received', 'payment_failed')`,
+        [payment.id, rzpOrderId]
+      );
+      console.log(`⚠️  Webhook: payment.failed — razorpay_order_id=${rzpOrderId}`);
+    }
+  } else if (eventType === 'order.paid') {
+    const order = event?.payload?.order?.entity;
+    const rzpOrderId = order?.id;
+    const paymentId = event?.payload?.payment?.entity?.id || null;
 
-    console.log(`⚠️  Webhook: payment.failed — razorpay_order_id=${rzpOrderId}`);
+    if (rzpOrderId) {
+      await pool.query(
+        `UPDATE orders
+         SET status = 'received',
+             razorpay_order_id = COALESCE($1, razorpay_order_id),
+             razorpay_payment_id = COALESCE($2, razorpay_payment_id)
+         WHERE razorpay_order_id = $1
+           AND status IN ('pending_payment', 'payment_failed', 'received')`,
+        [rzpOrderId, paymentId]
+      );
+      console.log(`✅ Webhook: order.paid — razorpay_order_id=${rzpOrderId}`);
+    }
   }
 
-  // Always return 200 to acknowledge receipt
   return res.status(200).json({ received: true });
 });
 
-module.exports = { createRazorpayOrder, verifyPayment, handleWebhook };
+const getPaymentStatus = asyncHandler(async (req, res) => {
+  const { orderId } = req.params;
+
+  if (!orderId) {
+    return res.status(400).json({ success: false, message: 'orderId is required.' });
+  }
+
+  const result = await pool.query(
+    `SELECT id, order_number, status, total, payment_method, razorpay_order_id, razorpay_payment_id, created_at
+     FROM orders
+     WHERE id = $1 OR order_number = $1`,
+    [orderId]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ success: false, message: 'Order not found.' });
+  }
+
+  return res.json({ success: true, order: result.rows[0] });
+});
+
+module.exports = { createRazorpayOrder, verifyPayment, handleWebhook, getPaymentStatus };

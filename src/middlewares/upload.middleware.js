@@ -31,14 +31,18 @@ let supabase = null;
 function getSupabaseClient() {
   if (supabase) return supabase;
 
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = process.env.SUPABASE_URL?.trim();
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 
   if (!url || !key) {
     throw new Error(
       'Supabase upload is not configured. ' +
       'Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in your .env file.'
     );
+  }
+
+  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url)) {
+    throw new Error('SUPABASE_URL must be a Supabase project URL like https://<project-ref>.supabase.co');
   }
 
   supabase = createClient(url, key);

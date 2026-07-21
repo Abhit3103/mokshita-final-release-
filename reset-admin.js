@@ -1,23 +1,22 @@
-const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 require('dotenv').config();
-
-const pool = new Pool({
-  user: process.env.DB_USER || 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_NAME || 'mokshita_db',
-  password: process.env.DB_PASSWORD || 'Apurvsingh@123',
-  port: process.env.DB_PORT || 5432,
-});
+const pool = require('./src/config/db');
 
 (async () => {
+  const email = process.env.RESET_ADMIN_EMAIL;
+  const password = process.env.RESET_ADMIN_PASSWORD;
+
+  if (!email || !password) {
+    throw new Error('RESET_ADMIN_EMAIL and RESET_ADMIN_PASSWORD must be set.');
+  }
+
   try {
-    const hash = await bcrypt.hash('admin123', 10);
-    await pool.query('UPDATE users SET password_hash = $1 WHERE email = $2', [hash, 'admin@test.com']);
+    const hash = await bcrypt.hash(password, 12);
+    await pool.query('UPDATE users SET password_hash = $1 WHERE email = $2', [hash, email]);
     console.log('Password updated successfully.');
   } catch (err) {
     console.error(err);
   } finally {
-    pool.end();
+    await pool.end();
   }
 })();

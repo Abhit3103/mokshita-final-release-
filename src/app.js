@@ -1,5 +1,6 @@
 'use strict';
 
+require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const helmet = require('helmet');
@@ -22,6 +23,7 @@ const navigationRoutes  = require('./routes/navigation.routes');
 const paymentRoutes     = require('./routes/payment.routes');
 
 const errorHandler      = require('./middlewares/errorHandler.middleware');
+const pool              = require('./config/db');
 
 const app = express();
 
@@ -40,6 +42,7 @@ app.use(helmet({
 app.use(createCorsMiddleware());
 
 // ─── Body Parsing ─────────────────────────────────────────────────────────────
+app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -86,8 +89,20 @@ app.use('/api/payments',        paymentRoutes);      // Razorpay payment gateway
 
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
-app.get('/health', (_req, res) => {
-  res.json({ success: true, message: 'Mokshita API is running', timestamp: new Date().toISOString() });
+app.get('/health', async (_req, res) => {
+  try {
+    await pool.query('SELECT NOW()');
+    res.status(200).json({
+      status: 'ok',
+      database: 'connected',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'error',
+      message: 'Database unavailable'
+    });
+  }
 });
 
 // ─── 404 Handler ─────────────────────────────────────────────────────────────

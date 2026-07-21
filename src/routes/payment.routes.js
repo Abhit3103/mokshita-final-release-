@@ -13,7 +13,7 @@ const express = require('express');
 const { body } = require('express-validator');
 const router  = express.Router();
 
-const { createRazorpayOrder, verifyPayment, handleWebhook } = require('../controllers/payment.controller');
+const { createRazorpayOrder, verifyPayment, handleWebhook, getPaymentStatus } = require('../controllers/payment.controller');
 const { validate } = require('../middlewares/validate.middleware');
 
 // ─── Webhook — MUST use raw body parser (Razorpay signs raw bytes) ────────────
@@ -42,6 +42,9 @@ router.post(
   ],
   createRazorpayOrder
 );
+
+// ─── Payment Status ─────────────────────────────────────────────────────────
+router.get('/:orderId/status', getPaymentStatus);
 
 // ─── Verify Payment ───────────────────────────────────────────────────────────
 router.post(

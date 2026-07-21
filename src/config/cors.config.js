@@ -88,7 +88,7 @@ function createCorsMiddleware() {
 
   return cors({
     origin: originCallback,
-    credentials: true,
+    credentials: false,
     methods: ALLOWED_METHODS,
     allowedHeaders: ALLOWED_HEADERS,
     exposedHeaders: ['Content-Range'],
