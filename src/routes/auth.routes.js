@@ -2,7 +2,7 @@
 
 const express = require('express');
 const { body } = require('express-validator');
-const { register, login, getMe, updateProfile } = require('../controllers/auth.controller');
+const { register, login, logout, getMe, updateProfile, forgotPassword, resetPassword, verifyEmail } = require('../controllers/auth.controller');
 const { authenticateToken } = require('../middlewares/auth.middleware');
 const { validate } = require('../middlewares/validate.middleware');
 
@@ -37,9 +37,34 @@ router.post('/signup', (req, res, next) => {
   next();
 }, register);
 
-router.post('/logout', (_req, res) => {
-  return res.json({ success: true, message: 'Logged out successfully.' });
-});
+router.post(
+  '/forgot-password',
+  [
+    body('email').isEmail().normalizeEmail().withMessage('Valid email is required.'),
+    validate,
+  ],
+  forgotPassword
+);
+
+router.post(
+  '/reset-password',
+  [
+    body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters.'),
+    validate,
+  ],
+  resetPassword
+);
+
+router.post(
+  '/verify-email',
+  [
+    body('email').optional({ values: 'falsy' }).isEmail().normalizeEmail().withMessage('Valid email is required when provided.'),
+    validate,
+  ],
+  verifyEmail
+);
+
+router.post('/logout', logout);
 
 // ─── GET /api/auth/me ─────────────────────────────────────────────────────────
 router.get('/me', authenticateToken, getMe);
