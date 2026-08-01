@@ -14,6 +14,7 @@ const { body } = require('express-validator');
 const router  = express.Router();
 
 const { createRazorpayOrder, verifyPayment, handleWebhook, getPaymentStatus } = require('../controllers/payment.controller');
+const { authenticateToken } = require('../middlewares/auth.middleware');
 const { validate } = require('../middlewares/validate.middleware');
 
 // ─── Webhook — MUST use raw body parser (Razorpay signs raw bytes) ────────────
@@ -28,10 +29,11 @@ router.post(
 // ─── Create Razorpay Order ────────────────────────────────────────────────────
 router.post(
   '/create-order',
+  authenticateToken,
   [
-    body('amount_paise')
-      .isInt({ min: 100 })
-      .withMessage('amount_paise must be an integer ≥ 100 (minimum ₹1).'),
+    body('order_id')
+      .isUUID()
+      .withMessage('order_id must be a valid UUID.'),
     body('receipt')
       .optional()
       .isString()
@@ -49,11 +51,12 @@ router.get('/:orderId/status', getPaymentStatus);
 // ─── Verify Payment ───────────────────────────────────────────────────────────
 router.post(
   '/verify',
+  authenticateToken,
   [
     body('razorpay_payment_id').notEmpty().withMessage('razorpay_payment_id is required.'),
     body('razorpay_order_id').notEmpty().withMessage('razorpay_order_id is required.'),
     body('razorpay_signature').notEmpty().withMessage('razorpay_signature is required.'),
-    body('order_db_id').isUUID().withMessage('order_db_id must be a valid UUID.'),
+    body('order_id').isUUID().withMessage('order_id must be a valid UUID.'),
     validate,
   ],
   verifyPayment

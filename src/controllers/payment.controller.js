@@ -56,21 +56,42 @@ function getRazorpay() {
  * receipt      = a short reference string (e.g., the DB order_number).
  */
 const createRazorpayOrder = asyncHandler(async (req, res) => {
-  const { amount_paise, amountPaise, receipt, notes = {} } = req.body;
-  const resolvedAmountPaise = amount_paise ?? amountPaise;
+  const { order_id, receipt, notes = {} } = req.body;
 
-  if (!resolvedAmountPaise || isNaN(parseInt(resolvedAmountPaise)) || parseInt(resolvedAmountPaise) < 100) {
-    return res.status(400).json({ success: false, message: 'amount_paise must be an integer ≥ 100 (₹1).' });
+  if (!order_id) {
+    return res.status(400).json({ success: false, message: 'order_id is required.' });
+  }
+
+  // Fetch order from DB to get authoritative total
+  const result = await pool.query('SELECT total, user_id FROM orders WHERE id = $1', [order_id]);
+  if (result.rows.length === 0) {
+    return res.status(404).json({ success: false, message: 'Order not found.' });
+  }
+
+  const order = result.rows[0];
+
+  // Verify ownership
+  if (order.user_id !== req.user.id) {
+    return res.status(403).json({ success: false, message: 'Access denied to this order.' });
+  }
+
+  const amount_paise = Math.round(parseFloat(order.total) * 100);
+
+  if (!amount_paise || amount_paise < 100) {
+    return res.status(400).json({ success: false, message: 'Calculated order amount must be at least ₹1.' });
   }
 
   const rzp = getRazorpay();
 
   const razorpayOrder = await rzp.orders.create({
-    amount:   parseInt(resolvedAmountPaise),
+    amount:   amount_paise,
     currency: 'INR',
     receipt:  receipt || `mks-${Date.now()}`,
     notes,
   });
+
+  // Optionally save razorpay_order_id in DB to track initialization
+  await pool.query('UPDATE orders SET razorpay_order_id = $1 WHERE id = $2', [razorpayOrder.id, order_id]);
 
   return res.status(201).json({
     success:          true,
@@ -101,16 +122,24 @@ const verifyPayment = asyncHandler(async (req, res) => {
     razorpayOrderId,
     razorpay_signature,
     razorpaySignature,
-    order_db_id,
-    orderDbId,
+    order_id,
   } = req.body;
   const resolvedPaymentId = razorpay_payment_id || razorpayPaymentId;
   const resolvedOrderId = razorpay_order_id || razorpayOrderId;
   const resolvedSignature = razorpay_signature || razorpaySignature;
-  const resolvedOrderDbId = order_db_id || orderDbId;
+  const resolvedOrderDbId = order_id;
 
   if (!resolvedPaymentId || !resolvedOrderId || !resolvedSignature || !resolvedOrderDbId) {
     return res.status(400).json({ success: false, message: 'Missing required payment verification fields.' });
+  }
+
+  // Verify ownership before updating
+  const orderCheck = await pool.query('SELECT user_id FROM orders WHERE id = $1', [resolvedOrderDbId]);
+  if (orderCheck.rows.length === 0) {
+    return res.status(404).json({ success: false, message: 'Order not found in database.' });
+  }
+  if (orderCheck.rows[0].user_id !== req.user.id) {
+    return res.status(403).json({ success: false, message: 'Access denied to this order.' });
   }
 
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
