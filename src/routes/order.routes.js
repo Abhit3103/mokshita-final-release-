@@ -9,14 +9,14 @@ const { validate } = require('../middlewares/validate.middleware');
 const router = express.Router();
 
 // ─── POST /api/orders/checkout ─────────────────────────────────────────────────
-// Auth is optional — guest checkout is allowed (user_id will be null)
-// To support both, we try to decode the token but don't hard-fail if missing
+// Auth is optional — guest checkout is allowed (user_id will be null).
+// When a Bearer token is present, verify it via Supabase JWT.
 router.post(
   '/checkout',
   (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      return require('../middlewares/auth.middleware').authenticateToken(req, res, next);
+    const token = req.headers.authorization?.split(' ')[1];
+    if (token) {
+      return authenticateToken(req, res, next);
     }
     next(); // Guest checkout: req.user will be undefined
   },

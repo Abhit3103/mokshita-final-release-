@@ -11,6 +11,7 @@
  *   1. 01_schema_expansion   (categories, subcategories, travel, CMS, tags, product_images)
  *   2. 02_category_layer     (category featured flag, Others default category)
  *   3. 03_commerce_category_schema  (banner, SEO, display_order, visibility flags)
+ *   4. 04_supabase_auth_identity    (users.supabase_user_id link)
  *
  * Run with: npm run migrate  OR  node src/config/migrate.js
  */
@@ -250,6 +251,15 @@ UPDATE categories    SET updated_at = created_at WHERE updated_at IS NULL;
 UPDATE subcategories SET updated_at = created_at WHERE updated_at IS NULL;
 `;
 
+// ─── 4. SUPABASE AUTH IDENTITY ───────────────────────────────────────────────
+const MIGRATION_04 = `
+ALTER TABLE users ADD COLUMN IF NOT EXISTS supabase_user_id UUID;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_supabase_user_id
+ON users(supabase_user_id)
+WHERE supabase_user_id IS NOT NULL;
+`;
+
 // ─── RUNNER ──────────────────────────────────────────────────────────────────
 async function migrate() {
   const client = await pool.connect();
@@ -258,23 +268,27 @@ async function migrate() {
 
     await client.query('BEGIN');
 
-    console.log('  [0/3] Running base schema (users, products, carts, orders, leads)...');
+    console.log('  [0/4] Running base schema (users, products, carts, orders, leads)...');
     await client.query(BASE_SCHEMA);
     console.log('  ✅ Base schema ready.\n');
 
-    console.log('  [1/3] Running migration 01 — schema expansion (categories, product_images, travel, CMS)...');
+    console.log('  [1/4] Running migration 01 — schema expansion (categories, product_images, travel, CMS)...');
     await client.query(MIGRATION_01);
     console.log('  ✅ Migration 01 complete.\n');
 
-    console.log('  [2/3] Running migration 02 — category layer (featured flag, Others category)...');
+    console.log('  [2/4] Running migration 02 — category layer (featured flag, Others category)...');
     await client.query(MIGRATION_02);
     await ensureOthersCategory(client);
     await migrateUncategorizedProducts(client);
     console.log('  ✅ Migration 02 complete — "Others" category bootstrapped.\n');
 
-    console.log('  [3/3] Running migration 03 — commerce category schema (SEO, banners, display_order)...');
+    console.log('  [3/4] Running migration 03 — commerce category schema (SEO, banners, display_order)...');
     await client.query(MIGRATION_03);
     console.log('  ✅ Migration 03 complete.\n');
+
+    console.log('  [4/4] Running migration 04 — Supabase auth identity (supabase_user_id)...');
+    await client.query(MIGRATION_04);
+    console.log('  ✅ Migration 04 complete.\n');
 
     await client.query('COMMIT');
 
