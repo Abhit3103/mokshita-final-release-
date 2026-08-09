@@ -11,8 +11,14 @@ const normalizeSupabaseUrl = (value) => {
   if (!trimmed) return null;
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
 
-  const matched = trimmed.match(/(?:postgres(?:ql)?):\/\/[^@]+@(?:db\.)?([a-z0-9-]+)\.supabase\.co/i);
-  if (matched) return `https://${matched[1]}.supabase.co`;
+  let projectId = null;
+  const dbMatch = trimmed.match(/(?:postgres(?:ql)?):\/\/[^@]+@(?:db\.)?([a-z0-9-]+)\.supabase\.co/i);
+  if (dbMatch) projectId = dbMatch[1];
+
+  const poolerMatch = trimmed.match(/(?:postgres(?:ql)?):\/\/[^.]+\.([a-z0-9-]+):[^@]+@.*pooler\.supabase\.com/i);
+  if (poolerMatch) projectId = poolerMatch[1];
+
+  if (projectId) return `https://${projectId}.supabase.co`;
 
   return trimmed;
 };
@@ -127,9 +133,7 @@ const forgotPassword = asyncHandler(async (req, res) => {
     const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, redirectTo ? { redirectTo } : undefined);
 
     if (error) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.error('Supabase forgot password error:', error.message || error);
-      }
+      console.error('Supabase forgot password error:', error.message || error);
     }
 
     return res.json({
@@ -137,9 +141,7 @@ const forgotPassword = asyncHandler(async (req, res) => {
       message: 'If an account exists, a password reset link has been sent.',
     });
   } catch (error) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.error('Supabase forgot password error:', error.message || error);
-    }
+    console.error('Supabase error:', error.message || error);
 
     return res.json({
       success: true,
@@ -176,9 +178,7 @@ const resetPassword = asyncHandler(async (req, res) => {
 
     return res.json({ success: true, message: 'Password updated successfully.' });
   } catch (error) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.error('Supabase reset password error:', error.message || error);
-    }
+    console.error('Supabase reset password error:', error.message || error);
 
     return res.status(400).json({ success: false, message: 'Unable to reset password.' });
   }
@@ -211,9 +211,7 @@ const verifyEmail = asyncHandler(async (req, res) => {
 
     return res.json({ success: true, message: 'If an account exists, a verification email has been sent.' });
   } catch (error) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.error('Supabase verify email error:', error.message || error);
-    }
+    console.error('Supabase verify email error:', error.message || error);
 
     return res.json({ success: true, message: 'If an account exists, a verification email has been sent.' });
   }
@@ -264,9 +262,7 @@ const register = asyncHandler(async (req, res) => {
       data: { user: buildUserPayload(localUser), token: null },
     });
   } catch (error) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.error('Supabase register error:', error.message || error);
-    }
+    console.error('Supabase register error:', error.message || error);
     return res.status(500).json({ success: false, message: 'An error occurred during registration.' });
   }
 });
@@ -322,9 +318,7 @@ const login = asyncHandler(async (req, res) => {
       data: { user: buildUserPayload(localUser), token: session.access_token },
     });
   } catch (error) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.error('Supabase login error:', error.message || error);
-    }
+    console.error('Supabase login error:', error.message || error);
     return res.status(500).json({ success: false, message: 'An error occurred during login.' });
   }
 });
@@ -335,9 +329,7 @@ const logout = asyncHandler(async (req, res) => {
     const supabase = getSupabaseClient(req);
     await supabase.auth.signOut();
   } catch (error) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.error('Supabase logout error:', error.message || error);
-    }
+    console.error('Supabase logout error:', error.message || error);
   }
 
   return res.json({
