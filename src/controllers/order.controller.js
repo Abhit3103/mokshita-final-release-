@@ -229,6 +229,7 @@ const checkout = asyncHandler(async (req, res) => {
         success: true,
         order_id: razorpayOrder.id,
         amount: final_total,
+        key_id: process.env.RAZORPAY_KEY_ID,
         order: {
           ...order,
           razorpay_order_id: razorpayOrder.id,
