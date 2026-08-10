@@ -260,6 +260,42 @@ ON users(supabase_user_id)
 WHERE supabase_user_id IS NOT NULL;
 `;
 
+// ─── 5. (05 was a data seed — no schema changes) ──────────────────────────────
+
+// ─── 6. ORDERS — RAZORPAY PAYMENT COLUMNS ────────────────────────────────────
+const MIGRATION_06 = `
+-- Add Razorpay columns to orders (safe, idempotent — COD orders unaffected)
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS razorpay_order_id   TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS razorpay_payment_id TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS razorpay_signature  TEXT;
+
+-- Extend status CHECK to cover Razorpay lifecycle values
+DO $$
+BEGIN
+  ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check;
+EXCEPTION WHEN others THEN NULL;
+END;
+$$;
+
+DO $$
+BEGIN
+  ALTER TABLE orders ADD CONSTRAINT orders_status_check
+    CHECK (status IN (
+      'pending_payment', 'received', 'payment_failed',
+      'processing', 'shipped', 'out_for_delivery',
+      'delivered', 'cancelled', 'refunded'
+    ));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END;
+$$;
+
+CREATE INDEX IF NOT EXISTS idx_orders_razorpay_order_id
+  ON orders(razorpay_order_id) WHERE razorpay_order_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_orders_razorpay_payment_id
+  ON orders(razorpay_payment_id) WHERE razorpay_payment_id IS NOT NULL;
+`;
+
 // ─── RUNNER ──────────────────────────────────────────────────────────────────
 async function migrate() {
   const client = await pool.connect();
@@ -286,9 +322,13 @@ async function migrate() {
     await client.query(MIGRATION_03);
     console.log('  ✅ Migration 03 complete.\n');
 
-    console.log('  [4/4] Running migration 04 — Supabase auth identity (supabase_user_id)...');
+    console.log('  [4/5] Running migration 04 — Supabase auth identity (supabase_user_id)...');
     await client.query(MIGRATION_04);
     console.log('  ✅ Migration 04 complete.\n');
+
+    console.log('  [5/5] Running migration 06 — orders Razorpay columns...');
+    await client.query(MIGRATION_06);
+    console.log('  ✅ Migration 06 complete.\n');
 
     await client.query('COMMIT');
 
