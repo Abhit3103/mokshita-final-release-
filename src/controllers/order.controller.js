@@ -24,44 +24,97 @@ const FLAT_SHIPPING_COST = 80;
  *               POST /api/payments/verify (to confirm + set status = 'received')
  */
 const checkout = asyncHandler(async (req, res) => {
-  const {
-    customer_name, customerName, email, phone,
-    address_line, addressLine, city, state, pincode,
-    payment_method, paymentMethod = 'COD',
-    items, // [{ product_id, quantity }]
-  } = req.body;
-  const resolvedCustomerName = customer_name || customerName;
-  const resolvedAddressLine = address_line || addressLine;
-  const resolvedPaymentMethod = (payment_method || paymentMethod || 'COD').toUpperCase();
-
-  if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ success: false, message: 'Order must contain at least one item.' });
+  // STEP 4: Ensure no crash if req.user is undefined
+  if (!req.user) {
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
-  // Validate payment_method
-  const VALID_PAYMENT_METHODS = ['COD', 'RAZORPAY'];
-  const normalizedPayment = resolvedPaymentMethod;
-  if (!VALID_PAYMENT_METHODS.includes(normalizedPayment)) {
-    return res.status(400).json({
-      success: false,
-      message: `payment_method must be one of: ${VALID_PAYMENT_METHODS.join(', ')}.`,
-    });
+  // STEP 1: Log incoming data
+  console.log("REQ BODY:", req.body);
+  console.log("USER:", req.user);
+
+  // Synthesize shipping_address if missing, using flat fields (for retro-compatibility)
+  if (!req.body.shipping_address) {
+    const hasFlatFields = req.body.customer_name || req.body.customerName || req.body.name ||
+                           req.body.address_line || req.body.addressLine || req.body.address;
+    if (hasFlatFields) {
+      req.body.shipping_address = {
+        customer_name: req.body.customer_name || req.body.customerName || req.body.name || 'Customer',
+        email: req.body.email || req.user?.email || 'customer@example.com',
+        phone: req.body.phone || '0000000000',
+        address_line: req.body.address_line || req.body.addressLine || req.body.address || 'N/A',
+        city: req.body.city || 'N/A',
+        state: req.body.state || 'N/A',
+        pincode: req.body.pincode || '000000'
+      };
+    }
   }
+
+  const { items, shipping_address, payment_method } = req.body;
+
+  // STEP 2: Validate basic fields
+  if (!items || items.length === 0) {
+    return res.status(422).json({ error: "Cart is empty" });
+  }
+
+  if (!shipping_address) {
+    return res.status(422).json({ error: "Shipping address required" });
+  }
+
+  // Normalize payment method
+  const method = (payment_method || req.body.paymentMethod)?.toUpperCase();
+
+  if (!["COD", "RAZORPAY"].includes(method)) {
+    return res.status(422).json({ error: "Invalid payment method" });
+  }
+
+  // Validate items
+  for (const item of items) {
+    if (!item.product_id || !item.quantity || !item.price) {
+      return res.status(422).json({ error: "Invalid item format" });
+    }
+  }
+
+  // Calculate total (DO NOT trust frontend)
+  const total_amount = items.reduce(
+    (sum, item) => sum + item.price * item.quantity,
+    0
+  );
+
+  // Extract user
+  const user_id = req.user.id;
+
+  // Extract address details with safe default fallbacks to prevent DB constraint failure
+  let customer_name, email, phone, address_line, city, state, pincode;
+  if (typeof shipping_address === 'object' && shipping_address !== null) {
+    customer_name = shipping_address.customer_name || shipping_address.name || shipping_address.customerName;
+    email = shipping_address.email;
+    phone = shipping_address.phone;
+    address_line = shipping_address.address_line || shipping_address.address || shipping_address.addressLine;
+    city = shipping_address.city;
+    state = shipping_address.state;
+    pincode = shipping_address.pincode;
+  } else {
+    address_line = String(shipping_address);
+  }
+
+  customer_name = customer_name || req.body.customer_name || req.body.customerName || req.body.name || req.user?.email || 'Customer';
+  email = email || req.body.email || req.user?.email || 'customer@example.com';
+  phone = phone || req.body.phone || '0000000000';
+  address_line = address_line || req.body.address_line || req.body.addressLine || req.body.address || 'N/A';
+  city = city || req.body.city || 'N/A';
+  state = state || req.body.state || 'N/A';
+  pincode = pincode || req.body.pincode || '000000';
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    // ── Re-validate all prices from DB ──────────────────────────────────────
-    let subtotal = 0;
+    // ── Re-validate all prices/stock from DB ──────────────────────────────────────
     const validatedItems = [];
 
     for (const item of items) {
       const { product_id, quantity } = item;
-      if (!product_id || !quantity || parseInt(quantity) < 1) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ success: false, message: 'Invalid item in order.' });
-      }
 
       const prodResult = await client.query(
         'SELECT id, name, price, stock FROM products WHERE id = $1 FOR UPDATE',
@@ -83,23 +136,19 @@ const checkout = asyncHandler(async (req, res) => {
         });
       }
 
-      const price = parseFloat(product.price);
-      subtotal += price * parseInt(quantity);
       validatedItems.push({
         product_id: product.id,
         quantity: parseInt(quantity),
-        price_at_time: price,
+        price_at_time: parseFloat(product.price),
         name: product.name,
       });
     }
 
-    // ── Calculate shipping ───────────────────────────────────────────────────
-    const shipping_cost = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : FLAT_SHIPPING_COST;
-    const total = subtotal + shipping_cost;
+    const shipping_cost = total_amount >= FREE_SHIPPING_THRESHOLD ? 0 : FLAT_SHIPPING_COST;
+    const final_total = total_amount + shipping_cost;
     const order_number = generateOrderNumber();
 
-    // ── Order status: COD confirmed immediately; Razorpay waits for payment ─
-    const initialStatus = normalizedPayment === 'RAZORPAY' ? 'pending_payment' : 'received';
+    const initialStatus = method === 'RAZORPAY' ? 'pending_payment' : 'received';
 
     // ── Create order record ──────────────────────────────────────────────────
     const orderResult = await client.query(
@@ -109,9 +158,9 @@ const checkout = asyncHandler(async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING *`,
       [
-        req.user?.id || null, order_number, resolvedCustomerName, email, phone,
-        resolvedAddressLine, city, state, pincode,
-        normalizedPayment, subtotal.toFixed(2), shipping_cost.toFixed(2), total.toFixed(2),
+        user_id, order_number, customer_name, email, phone,
+        address_line, city, state, pincode,
+        method, total_amount.toFixed(2), shipping_cost.toFixed(2), final_total.toFixed(2),
         initialStatus,
       ]
     );
@@ -133,29 +182,63 @@ const checkout = asyncHandler(async (req, res) => {
     }
 
     // ── Clear user's DB cart after successful order ──────────────────────────
-    if (req.user?.id) {
-      const cartResult = await client.query('SELECT id FROM carts WHERE user_id = $1', [req.user.id]);
-      if (cartResult.rows.length > 0) {
-        await client.query('DELETE FROM cart_items WHERE cart_id = $1', [cartResult.rows[0].id]);
-      }
+    const cartResult = await client.query('SELECT id FROM carts WHERE user_id = $1', [user_id]);
+    if (cartResult.rows.length > 0) {
+      await client.query('DELETE FROM cart_items WHERE cart_id = $1', [cartResult.rows[0].id]);
     }
 
     await client.query('COMMIT');
 
-    return res.status(201).json({
-      success: true,
-      message: normalizedPayment === 'RAZORPAY'
-        ? 'Order created. Complete payment to confirm your order.'
-        : 'Order placed successfully.',
-      order: {
-        ...order,
-        items: validatedItems.map(({ product_id, quantity, price_at_time, name }) => ({
-          product_id, quantity, price_at_time, name,
-        })),
-        // For Razorpay: frontend needs amount_paise to pass to the Razorpay checkout SDK
-        amount_paise: normalizedPayment === 'RAZORPAY' ? Math.round(total * 100) : undefined,
-      },
-    });
+    // STEP 3: IMPLEMENT FLOWS
+
+    // COD FLOW:
+    if (method === "COD") {
+      return res.status(201).json({
+        success: true,
+        message: "Order placed successfully (COD)",
+        order: {
+          ...order,
+          items: validatedItems.map(({ product_id, quantity, price_at_time, name }) => ({
+            product_id, quantity, price_at_time, name,
+          })),
+        }
+      });
+    }
+
+    // RAZORPAY FLOW:
+    if (method === "RAZORPAY") {
+      const key_id = process.env.RAZORPAY_KEY_ID;
+      const key_secret = process.env.RAZORPAY_KEY_SECRET;
+      if (!key_id || !key_secret) {
+        throw new Error('Razorpay credentials missing from .env file.');
+      }
+
+      const Razorpay = require('razorpay');
+      const razorpay = new Razorpay({ key_id, key_secret });
+
+      const razorpayOrder = await razorpay.orders.create({
+        amount: Math.round(final_total * 100),
+        currency: "INR",
+        receipt: order.order_number
+      });
+
+      // Save razorpay_order_id in DB
+      await pool.query('UPDATE orders SET razorpay_order_id = $1 WHERE id = $2', [razorpayOrder.id, order.id]);
+
+      return res.status(201).json({
+        success: true,
+        order_id: razorpayOrder.id,
+        amount: final_total,
+        order: {
+          ...order,
+          razorpay_order_id: razorpayOrder.id,
+          items: validatedItems.map(({ product_id, quantity, price_at_time, name }) => ({
+            product_id, quantity, price_at_time, name,
+          })),
+          amount_paise: razorpayOrder.amount,
+        }
+      });
+    }
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;

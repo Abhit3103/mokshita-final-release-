@@ -7,16 +7,28 @@ const cors = require('cors');
  * Not used in production unless also listed in ALLOWED_ORIGINS.
  */
 const DEFAULT_DEV_ORIGINS = [
+  // Common static-file / live-reload servers
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://localhost:3001',
   'http://127.0.0.1:3001',
+  // Vite default
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   'http://localhost:5174',
   'http://127.0.0.1:5174',
+  // VS Code Live Server default (port 5500)
   'http://localhost:5500',
   'http://127.0.0.1:5500',
+  // http-server, serve, lite-server common ports
+  'http://localhost:4000',
+  'http://127.0.0.1:4000',
+  'http://localhost:8000',
+  'http://127.0.0.1:8000',
+  'http://localhost:8080',
+  'http://127.0.0.1:8080',
+  // null origin (file:// opened directly in browser)
+  'null',
 ];
 
 /**
