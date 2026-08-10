@@ -3,13 +3,11 @@
 const express = require('express');
 const { body } = require('express-validator');
 const { getCart, addToCart, updateCartItem, removeCartItem, syncCart } = require('../controllers/cart.controller');
-const { authenticateToken } = require('../middlewares/auth.middleware');
 const { validate } = require('../middlewares/validate.middleware');
 
 const router = express.Router();
 
-// All cart routes require authentication
-router.use(authenticateToken);
+// Auth: verifyUser is applied in app.js for /api/cart
 
 router.get('/', getCart);
 

@@ -23,6 +23,7 @@ const navigationRoutes  = require('./routes/navigation.routes');
 const paymentRoutes     = require('./routes/payment.routes');
 
 const errorHandler      = require('./middlewares/errorHandler.middleware');
+const { verifyUser }    = require('./middlewares/auth.middleware');
 const pool              = require('./config/db');
 
 const app = express();
@@ -75,6 +76,11 @@ app.use('/api/auth', authLimiter);
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
+
+// Supabase JWT required for cart + orders (checkout, my-orders, COD)
+app.use('/api/cart', verifyUser);
+app.use('/api/orders', verifyUser);
+
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/admin', adminRoutes);

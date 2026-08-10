@@ -3,23 +3,15 @@
 const express = require('express');
 const { body } = require('express-validator');
 const { checkout, getMyOrders } = require('../controllers/order.controller');
-const { authenticateToken } = require('../middlewares/auth.middleware');
 const { validate } = require('../middlewares/validate.middleware');
 
 const router = express.Router();
 
+// Auth: verifyUser is applied in app.js for /api/orders
+
 // ─── POST /api/orders/checkout ─────────────────────────────────────────────────
-// Auth is optional — guest checkout is allowed (user_id will be null).
-// When a Bearer token is present, verify it via Supabase JWT.
 router.post(
   '/checkout',
-  (req, res, next) => {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (token) {
-      return authenticateToken(req, res, next);
-    }
-    next(); // Guest checkout: req.user will be undefined
-  },
   [
     body('customer_name').trim().notEmpty().withMessage('Customer name is required.'),
     body('email').isEmail().normalizeEmail().withMessage('Valid email is required.'),
@@ -37,6 +29,6 @@ router.post(
 );
 
 // ─── GET /api/orders/my-orders ─────────────────────────────────────────────────
-router.get('/my-orders', authenticateToken, getMyOrders);
+router.get('/my-orders', getMyOrders);
 
 module.exports = router;

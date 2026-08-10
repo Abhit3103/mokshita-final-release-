@@ -16,7 +16,11 @@ const normalizeSupabaseUrl = (value) => {
   return trimmed;
 };
 
+let supabaseClient = null;
+
 const getSupabaseClient = () => {
+  if (supabaseClient) return supabaseClient;
+
   const url = normalizeSupabaseUrl(process.env.SUPABASE_URL);
   const key = (process.env.SUPABASE_ANON_KEY || '').trim();
 
@@ -24,17 +28,19 @@ const getSupabaseClient = () => {
     throw new Error('Supabase auth is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY.');
   }
 
-  return createClient(url, key, {
+  supabaseClient = createClient(url, key, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
     },
   });
+
+  return supabaseClient;
 };
 
 /**
  * Ensure a local DB user exists for the Supabase auth user.
- * Cart/orders use the local UUID (users.id), not the Supabase UUID.
+ * Cart/orders FK to users.id (local UUID), not the Supabase auth UUID.
  */
 const ensureLocalUser = async (supabaseUser) => {
   const supabaseUserId = supabaseUser.id;
@@ -93,28 +99,31 @@ const ensureLocalUser = async (supabaseUser) => {
 
 /**
  * Verify Supabase JWT from Authorization: Bearer <token>
- * Sets req.user = { id, supabase_user_id, email, role }
+ * Sets req.user with local DB id for cart/orders, plus supabase identity.
  */
-const authenticateToken = async (req, res, next) => {
+async function verifyUser(req, res, next) {
   try {
-    const token = req.headers.authorization?.split(' ')[1];
+    const token = req.headers.authorization?.split(' ')[1]?.trim();
 
     if (!token) {
-      return res.status(401).json({ success: false, message: 'No token provided' });
+      return res.status(401).json({ success: false, error: 'No token provided', message: 'No token provided' });
     }
 
     const supabase = getSupabaseClient();
     const { data, error } = await supabase.auth.getUser(token);
 
     if (error || !data.user) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.error('Supabase getUser error:', error?.message || 'No user returned');
-      }
-      return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+      console.error('Supabase getUser error:', error?.message || 'No user returned');
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid or expired token',
+        message: 'Invalid or expired token',
+      });
     }
 
     const localUser = await ensureLocalUser(data.user);
 
+    // Controllers use req.user.id as the local users.id FK
     req.user = {
       id: localUser.id,
       supabase_user_id: data.user.id,
@@ -124,14 +133,12 @@ const authenticateToken = async (req, res, next) => {
 
     next();
   } catch (err) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.error('Supabase auth middleware error:', err.message || err);
-    }
-    return res.status(401).json({ success: false, message: 'Auth failed' });
+    console.error('Supabase auth middleware error:', err.message || err);
+    return res.status(401).json({ success: false, error: 'Auth failed', message: 'Auth failed' });
   }
-};
+}
 
-// Alias matching the requested verifyUser name
-const verifyUser = authenticateToken;
+// Keep authenticateToken as alias for existing route imports
+const authenticateToken = verifyUser;
 
 module.exports = { authenticateToken, verifyUser };
