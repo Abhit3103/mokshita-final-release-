@@ -9,7 +9,8 @@
     "migrate": "node src/config/migrate.js",
     "db:migrate": "node src/config/migrate.js",
     "db:seed": "node src/seeds/seed-all.js",
-    "db:setup": "node src/config/migrate.js && node src/seeds/seed-all.js"
+    "db:setup": "node src/config/migrate.js && node src/seeds/seed-all.js",
+    "keep-alive": "node keep-alive.js"
   },
   "keywords": [
     "nodejs",
